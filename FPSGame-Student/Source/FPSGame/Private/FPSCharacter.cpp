@@ -12,54 +12,44 @@
 #include "Kismet/KismetMathLibrary.h"
 
 //LAB 3: Complete TakeAnyDamage()
-void AFPSCharacter::TakeAnyDamage(AActor* DamagedActor, float Damage, const class UDamageType* DamageType, class AController* InstigatedBy, AActor* DamageCauser)
+void AFPSCharacter::TakeAnyDamage(AActor* DamagedActor, float Damage, const UDamageType* DamageType, AController* InstigatedBy, AActor* DamageCauser)
 {
 	GEngine->AddOnScreenDebugMessage(-1, 3, FColor::Green, "Damage Received - " + FString::FromInt(Damage));
-	//SET the damage type to a UBombDamageType. Use Cast<UBombDamageType>(DamageType)
 	
-	//IF damageType
-
+	// Cast the damage type to UBombDamageType
+	const UBombDamageType* BombDamageType = Cast<UBombDamageType>(DamageType);
+	if (BombDamageType)
 	{
-		//Get The Capsule Component and disable physics
+		// Disable physics on the capsule component
+		GetCapsuleComponent()->SetSimulatePhysics(false);
 
-		//Disable Input
-
+		// Disable player input
+		DisableInput(Cast<APlayerController>(GetController()));
 	}
-	//ENDIF
-
 }
+
 
 AFPSCharacter::AFPSCharacter()
 {
-	// Create a CameraComponent	
 	CameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("FirstPersonCamera"));
 	CameraComponent->SetupAttachment(GetCapsuleComponent());
-	CameraComponent->SetRelativeLocation (FVector(0, 0, BaseEyeHeight)); // Position the camera
+	CameraComponent->SetRelativeLocation(FVector(0, 0, BaseEyeHeight)); 
 	CameraComponent->bUsePawnControlRotation = true;
 
-	// Create a mesh component that will be used when being viewed from a '1st person' view (when controlling this pawn)
 	Mesh1PComponent = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("CharacterMesh"));
 	Mesh1PComponent->SetupAttachment(CameraComponent);
 	Mesh1PComponent->CastShadow = false;
-	Mesh1PComponent->SetRelativeRotation (FRotator(2.0f, -15.0f, 5.0f));
-	Mesh1PComponent->SetRelativeLocation ( FVector(0, 0, -160.0f));
+	Mesh1PComponent->SetRelativeRotation(FRotator(2.0f, -15.0f, 5.0f));
+	Mesh1PComponent->SetRelativeLocation(FVector(0, 0, -160.0f));
 
-	// Create a gun mesh component
 	GunMeshComponent = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FP_Gun"));
 	GunMeshComponent->CastShadow = false;
 	GunMeshComponent->SetupAttachment(Mesh1PComponent, "GripPoint");
 
-//LAB 3:
-#pragma region LAB3
-	//SUBSCRIBE to OnTakeAnyDamage Event. Use AddDynamic() and pass in this and ??
 	OnTakeAnyDamage.AddDynamic(this, &AFPSCharacter::TakeAnyDamage);
-
-	//SET HeldBomb to null
 	HeldBomb = nullptr;
-#pragma endregion	
-	//TODO NETWORK: Replicate this Pawn
 
-
+	bReplicates = true;
 }
 
 
@@ -82,62 +72,44 @@ void AFPSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompon
 }
 
 
-//LAB 3: Complete Fire()
 void AFPSCharacter::Fire()
 {
-	// try and fire a projectile
 	if (ProjectileClass)
 	{
-		//GET the Gun's Muzzle Location and Rotation. Use GetSocketLocation() and GetSocketRotation() on GunMeshComponent
+		FVector MuzzleLocation = GunMeshComponent->GetSocketLocation("Muzzle");
+		FRotator MuzzleRotation = GunMeshComponent->GetSocketRotation("Muzzle");
+		
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
 
-
-		//SET Spawn Collision Handling Override
-	
-
-		// SPAWN the projectile at the muzzle
-
+		GetWorld()->SpawnActor<AFPSProjectile>(ProjectileClass, MuzzleLocation, MuzzleRotation, SpawnParams);
 	}
 
-	// TRY and play the sound if specified
-
-
-	// TRY and play a firing animation if specified
-
+	PlaySound();
+	PlayAnimation();
 }
 
-//LAB 3: Complete PlaySound()
 void AFPSCharacter::PlaySound()
 {
-	// TRY and play the sound if specified
-	//IF FireSound
 	if (FireSound)
 	{
-		//PLAY the sound at the character's location using UGameplayStatics::PlaySoundAtLocation(....)
-
+		UGameplayStatics::PlaySoundAtLocation(this, FireSound, GetActorLocation());
 	}
-	//ENDIF
-
 }
 
-//LAB 3: Complete PlayAnimation()
+
 void AFPSCharacter::PlayAnimation()
 {
-	//If we have a FireAnimation
-	
+	if (FireAnimation)
 	{
-		//Get the animation object for the arms mesh
-		//ASSIGN AnimInstance to the Mesh1PComponent's AnimInstance. Create a local variable called AnimInstance of type UAnimInstance* 
-		
-		//IF AnimInstance
-		
+		UAnimInstance* AnimInstance = Mesh1PComponent->GetAnimInstance();
+		if (AnimInstance)
 		{
-			//Play the FireAnimation on the "Arms" slot with a blend in time of 0.0f. Use PlaySlotAnimationAsDynamicMontage(....)
-			
+			AnimInstance->PlaySlotAnimationAsDynamicMontage(FireAnimation, "Arms", 0.0f);
 		}
-		//ENDIF
 	}
-	//END IF
 }
+
 void AFPSCharacter::MoveForward(float Value)
 {
 	if (Value != 0.0f)
@@ -160,88 +132,106 @@ void AFPSCharacter::MoveRight(float Value)
 
 ////////////////////////////////////// ICA1 ///////////////////////////////////////////////////////////////////////////
 #pragma region LAB3
-//LAB 3: Complete PickupBomb()
 void AFPSCharacter::PickupBomb()
 {
-	//RAYCAST to check if a Actor is hit by a raycast
-	
-	//IF a Actor has been detected/hit
-
+	// Raycast to detect if an actor is hit
+	AActor* HitActor = RayCastGetActor();
+	if (HitActor)
 	{
-		//CHECK if it is a AFPSBombActor by doing a cast
-		
-		//IF it is a AFPSBombActor
-		
+		// Cast the hit actor to AFPSBombActor
+		AFPSBombActor* HitBomb = Cast<AFPSBombActor>(HitActor);
+		if (HitBomb)
 		{
-			//SET HeldBomb to the hit bomb
-			
-			//CALL Hold on the bomb passing in GunMeshComponent, we will attach it to the Gun
-			
+			// Debugging: Check if the bomb is detected
+			UE_LOG(LogTemp, Warning, TEXT("Bomb detected!"));
+
+			// Set HeldBomb to the detected bomb and hold it
+			HeldBomb = HitBomb;
+			HeldBomb->Hold(GunMeshComponent);
 		}
-		//ENDIF
-		//
 	}
-	//ENDIF
 }
+
+
 
 //LAB 3: Complete ThrowBomb()
 void AFPSCharacter::ThrowBomb()
 {
-	//IF we have a HeldBomb
-	
+	if (HeldBomb)
 	{
-		//THROW the Held Bomb passing in the Camera's Forward Vector
-		
+		// Throw the bomb in the camera's forward direction
+		HeldBomb->Throw(CameraComponent->GetForwardVector());
+		HeldBomb = nullptr; // Reset HeldBomb as it is no longer held
 	}
-	//ENDIF
 }
 
 
-//LAB 3: Complete RayCastGetActor()
+
 AActor* AFPSCharacter::RayCastGetActor()
 {
-	if (Controller && Controller->IsLocalPlayerController()) // we check the controller because we don't want bots to grab the use object and we need a controller for the GetPlayerViewpoint function
+	if (Controller && Controller->IsLocalPlayerController())
 	{
-		//DECLARE a StartTrace, Direction and EndTrace FVector
+		FVector StartTrace, Direction, EndTrace;
+		SetupRay(StartTrace, Direction, EndTrace);
 
+		FCollisionQueryParams TraceParams;
+		TraceParams.AddIgnoredActor(this);  // Avoid hitting the player itself
+		TraceParams.bTraceComplex = true;
+		TraceParams.bReturnPhysicalMaterial = true;
 
-		//CALL SetupRay passing in StartTrace, Direction
-
-
-		//Create a FCollisionQueryParams object called TraceParams and set the TraceParams.AddIgnoredActor(this), bTraceComplex to true and bReturnPhysicalMaterial to true;
-		
-
-		//Create a FHitResult object called Hit
 		FHitResult Hit;
-		//Get the World
+		bool bHit = GetWorld()->LineTraceSingleByChannel(Hit, StartTrace, EndTrace, ECC_PhysicsBody, TraceParams);
 
-		
-		//CALL LineTraceSingleByChannel on the World passing in Hit, StartTrace, EndTrace, ECC_PhysicsBody, TraceParams
-		
-		//CALL DrawDebugLine on the World passing in StartTrace, EndTrace, FColor::Green, false, 1, 0, 1.f
-		
-		return Hit.GetActor();
+		if (bHit)
+		{
+			DrawDebugLine(GetWorld(), StartTrace, EndTrace, FColor::Green, false, 1, 0, 1.f);
+
+			// If we hit a component, try to get the actor
+			if (Hit.GetComponent())
+			{
+				AActor* HitActor = Hit.GetComponent()->GetOwner();
+				if (HitActor && HitActor->IsA(AFPSBombActor::StaticClass()))
+				{
+					UE_LOG(LogTemp, Warning, TEXT("Raycast hit the bomb actor: %s"), *HitActor->GetName());
+					return HitActor;
+				}
+				else
+				{
+					UE_LOG(LogTemp, Warning, TEXT("Raycast hit component but not a bomb actor"));
+				}
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("Raycast hit but no valid component or actor found"));
+			}
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Raycast did not hit anything"));
+		}
 	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Controller is not a local player controller"));
+	}
+
 	return nullptr;
 }
 
 //LAB 3: Complete SetupRay()
 void AFPSCharacter::SetupRay(FVector& StartTrace, FVector& Direction, FVector& EndTrace)
 {
-	//DECLARE a CamLoc and CamRot FVector and FRotator
+	// Get the camera location and rotation
+	FVector CamLoc;
+	FRotator CamRot;
+	Controller->GetPlayerViewPoint(CamLoc, CamRot);
 
-
-	//Call GetPlayerViewPoint on the Controller passing in CamLoc, CamRot
-	
-	//CamLoc = GetActorLocation();
-
-	//SET StartTrace to the Camera Location
-	
-	//SET Direction to the Camera Rotation Vector
-	
-	//SET EndTrace to StartTrace + Direction * 300
-	
+	// Set up start trace, direction, and end trace for raycast
+	StartTrace = CamLoc;
+	Direction = CamRot.Vector();
+	EndTrace = StartTrace + Direction * 300.0f; // Adjust range as needed
 }
+
 #pragma endregion
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

@@ -21,7 +21,7 @@ void AFPSGameMode::BeginPlay()
 	Super::BeginPlay();
 
 	//TODO NETWORK: Uncomment This, We need to set all the StaticMesh Actors in the level to replicate
-	/*for (TActorIterator<AStaticMeshActor> StaticmeshItr(GetWorld()); StaticmeshItr; ++StaticmeshItr)
+	for (TActorIterator<AStaticMeshActor> StaticmeshItr(GetWorld()); StaticmeshItr; ++StaticmeshItr)
 	{
 		StaticmeshItr->SetReplicates(true);
 		FRepMovement mv;
@@ -31,5 +31,5 @@ void AFPSGameMode::BeginPlay()
 		StaticmeshItr->GetRootComponent()->SetIsReplicated(true);
 
 
-	}*/
+	}
 }

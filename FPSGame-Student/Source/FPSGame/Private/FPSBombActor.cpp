@@ -1,6 +1,5 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-
 #include "FPSBombActor.h"
 #include "kismet/GameplayStatics.h"
 #include "Engine/Engine.h"
@@ -9,143 +8,142 @@
 #include "PhysicsEngine/RadialForceComponent.h"
 #include "GameFramework/DamageType.h"
 #include "BombDamageType.h"
+#include "FPSCharacter.h"
+
 // Sets default values
-//LAB 3: Complete the Constructor
 AFPSBombActor::AFPSBombActor()
 {
- 	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
-	PrimaryActorTick.bCanEverTick = true;
+ 	PrimaryActorTick.bCanEverTick = true;
 
-	//CREATE the BombBox Component
-	
-	//SET the BombBox's profile name to BlockAllDynamic
+	// Create the BombBox Component
+	BombBox = CreateDefaultSubobject<UBoxComponent>(TEXT("BombBox"));
+	BombBox->SetCollisionProfileName(TEXT("BlockAllDynamic"));
+	BombBox->OnComponentHit.AddDynamic(this, &AFPSBombActor::OnHit);
 
-	//SUBSCRIBE to the BombBox's Hit event using the function OnHit()
-																	// set up a notification for when this component hits something blocking
+	// Prevent characters from walking on it
+	BombBox->SetWalkableSlopeOverride(FWalkableSlopeOverride(WalkableSlope_Unwalkable, 0.f));
+	BombBox->CanCharacterStepUpOn = ECB_No;
 
-	// Players can't walk on it
-	//CALL SetWalkableSlopeOverride() on BombBox passing in WalkableSlope_Unwalkable, 0.f)
-	
-	//SET CanCharacterStepUpOn on BombBox to ECB_No
-	
+	// Set BombBox as the RootComponent
+	RootComponent = BombBox;
 
-	//SET BombBox as the RootComponent
-	
+	// Create BombMesh and attach it to the RootComponent
+	BombMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BombMesh"));
+	BombMesh->SetupAttachment(RootComponent);
+	BombMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision); // No collision for visual mesh
 
-	//CREATE the BombMesh
-	
-	//ATTACH it to the RootComponent
-	
-	//CALL SetCollisionEnabled() on BombMesh passing in ECollisionEnabled::NoCollision
-	
+	// Create the RadialForceComp and attach it
+	RadialForceComp = CreateDefaultSubobject<URadialForceComponent>(TEXT("RadialForceComp"));
+	RadialForceComp->SetupAttachment(RootComponent);
+	RadialForceComp->Radius = 250.0f;
+	RadialForceComp->bImpulseVelChange = true;
+	RadialForceComp->bAutoActivate = false;
+	RadialForceComp->bIgnoreOwningActor = true;
 
-	//CREATE the RadialForceComp
-	
-	//ATTACH the RadialForceComp to the RootComponent
-	
-	//SET the RadialForceComp's Radius to 250 or a value of your choice
-	
-	//SET the RadialForceComp's bImpulseVelChange property to true
-	
-	//SET the RadialForceComp's bAutoActivate property to false. This will prevent the RadialForceComp from ticking and we will only use FireImpulse() instead
-																				 // Prevent component from ticking, and only use FireImpulse() instead
-	//SET the RadialForceComp's bIgnoreOwningActor property to true (ignoring self)
-	
+	// Enable physics on BombBox and set collision responses
+	BombBox->SetSimulatePhysics(true);
+	BombBox->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics); // Enable raycasting and physics interaction
+	BombBox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore); // Ignore player character for physics
 
+	// Allow raycasts to interact with BombBox by setting the collision response
+	BombBox->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block); // Block visibility channel (raycasting)
 
-	//CALL SetSimulatePhysics() on the BombBox to true
-	
-	//CALL SetCollisionEnabled() on BombBox and enable it to respond to Queries and Physics Collision
-	
-	//CALL SetCollisionResponseToChannel() on the BombBox, Make it Ignore the Pawn
-
-
-	//SET ExplodeDelay to 2.0f
-	
-
-
+	// Set the explode delay (default 2 seconds)
+	ExplodeDelay = 2.0f;
 }
 
-//LAB 3: Complete Explode()
 void AFPSBombActor::Explode()
 {
-	//CALL function to Play The Particle Effect
-	
+	// Play the particle effect
+	PlayParticleEffect();
 
-	//BLAST away nearby physics actors by Calling FireImpulse() on the Radial Force Component
-	
+	// Fire impulse to affect nearby physics actors
+	RadialForceComp->FireImpulse();
 
-	//APPLY RADIAL DAMAGE
-	//UGameplayStatics::ApplyRadialDamage(this, 100, GetActorLocation(), 250, UDamageType::StaticClass(), TArray<AActor*>(), this);
-	
-	//CREATE a Timer to Destroy this Actor After 1 second
-	
-	
+	// Apply radial damage
+	UGameplayStatics::ApplyRadialDamage(
+		this,
+		100.0f, // Damage amount
+		GetActorLocation(),
+		RadialForceComp->Radius,
+		UDamageType::StaticClass(),
+		TArray<AActor*>(), // Ignore actors list
+		this,
+		GetInstigatorController()
+	);
+
+	// Schedule bomb destruction after a delay
+	GetWorld()->GetTimerManager().SetTimerForNextTick(this, &AFPSBombActor::DestroyBomb);
 }
 
-//LAB 3: Complete DestroyBomb()
 void AFPSBombActor::DestroyBomb()
 {
-	//DESTROY this Actor
-
+	Destroy();
 }
-//LAB 3: Complete PlayParticleEffect()
+
 void AFPSBombActor::PlayParticleEffect()
 {
-	//SPAWN the ExplosionTemplate using UGameplayStatics::SpawnEmitterAtLocation(....)
-	
+	if (ExplosionTemplate)
+	{
+		UGameplayStatics::SpawnEmitterAtLocation(
+			GetWorld(),
+			ExplosionTemplate,
+			GetActorLocation(),
+			GetActorRotation()
+		);
+	}
 }
 
 // Called when the game starts or when spawned
 void AFPSBombActor::BeginPlay()
 {
 	Super::BeginPlay();
-	
 }
 
 // Called every frame
 void AFPSBombActor::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-
-}
-//LAB 3: Complete OnHit()
-void AFPSBombActor::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
-{
-
-
-	//CREATE a Timer to "Explode" this Actor After ExplodeDelay seconds
-	
 }
 
-//LAB 3: Complete Hold()
-void AFPSBombActor::Hold(USkeletalMeshComponent* HoldingComponent)
+void AFPSBombActor::OnHit(
+	UPrimitiveComponent* HitComp,
+	AActor* OtherActor,
+	UPrimitiveComponent* OtherComp,
+	FVector NormalImpulse,
+	const FHitResult& Hit
+)
 {
-	//IF HoldingComponent
-	if (HoldingComponent)
+	// Exclude player character from triggering the explosion
+	if (OtherActor && !OtherActor->IsA(AFPSCharacter::StaticClass()))
 	{
-		//DISABLE Physics
-		
-		//ATTACH the BombBox to the HoldingComponent at the HoldingComponents "Muzzle" Socket
-
+		// Schedule explosion after delay
+		FTimerHandle ExplodeTimer;
+		GetWorld()->GetTimerManager().SetTimer(ExplodeTimer, this, &AFPSBombActor::Explode, ExplodeDelay);
 	}
-	//ENDIF
 }
 
-//LAB 3: Complete Throw()
-void AFPSBombActor::Throw(FVector direction)
+void AFPSBombActor::Hold(USkeletalMeshComponent* AttachTo)
 {
-	//ENABLE physics on BombBox
-	
-	//CALL SetNotifyRigidBodyCollision() on BombBox and pass in true
-
-	//CALL SetCollisionEnabled() on BombBox passing in ??::QueryAndPhysics
-
-	//CALL SetCollisionResponseToChannel() on BombBox and make it Block with Pawn
-
-	//DETACH BombBox
-
-	//CALL AddForce(...) to BombBox to throw it, using the direction passed in
-
+	if (AttachTo)
+	{
+		// Attach the bomb to the given skeletal mesh component (e.g., the gun)
+		AttachToComponent(AttachTo, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+        
+		// Optionally disable physics and collisions to avoid unintended interactions
+		SetActorEnableCollision(false);
+		SetActorTickEnabled(false); // Optionally disable ticking while held
+	}
 }
 
+void AFPSBombActor::Throw(FVector Direction)
+{
+	BombBox->SetSimulatePhysics(true);
+	BombBox->SetNotifyRigidBodyCollision(true);
+	BombBox->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	BombBox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block); // Allow interaction with raycasts and physics
+
+	// Detach from actor and apply force
+	DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+	BombBox->AddForce(Direction * 500.0f, NAME_None, true); // Adjust force as needed
+}
