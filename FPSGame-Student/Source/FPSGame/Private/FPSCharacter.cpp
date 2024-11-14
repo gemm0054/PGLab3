@@ -177,32 +177,38 @@ AActor* AFPSCharacter::RayCastGetActor()
 		FCollisionQueryParams TraceParams;
 		TraceParams.AddIgnoredActor(this);  // Avoid hitting the player itself
 		TraceParams.bTraceComplex = true;
-		TraceParams.bReturnPhysicalMaterial = true;
+		TraceParams.bReturnPhysicalMaterial = false;
 
 		FHitResult Hit;
-		bool bHit = GetWorld()->LineTraceSingleByChannel(Hit, StartTrace, EndTrace, ECC_PhysicsBody, TraceParams);
+		bool bHit = GetWorld()->LineTraceSingleByChannel(Hit, StartTrace, EndTrace, ECC_Visibility, TraceParams);
 
 		if (bHit)
 		{
-			DrawDebugLine(GetWorld(), StartTrace, EndTrace, FColor::Green, false, 1, 0, 1.f);
+			// Draw the debug line to visualize the raycast
+			DrawDebugLine(GetWorld(), StartTrace, EndTrace, FColor::Green, false, 1.0f, 0, 1.0f);
 
-			// If we hit a component, try to get the actor
-			if (Hit.GetComponent())
+			// If we hit a component, check if the hit actor is AFPSBombActor
+			AActor* HitActor = Hit.GetActor();
+			if (HitActor)
 			{
-				AActor* HitActor = Hit.GetComponent()->GetOwner();
-				if (HitActor && HitActor->IsA(AFPSBombActor::StaticClass()))
+				// Log information about the hit actor
+				UE_LOG(LogTemp, Warning, TEXT("Raycast hit actor: %s"), *HitActor->GetName());
+
+				// Check if we hit a bomb actor specifically
+				AFPSBombActor* HitBombActor = Cast<AFPSBombActor>(HitActor);
+				if (HitBombActor)
 				{
-					UE_LOG(LogTemp, Warning, TEXT("Raycast hit the bomb actor: %s"), *HitActor->GetName());
-					return HitActor;
+					UE_LOG(LogTemp, Warning, TEXT("Raycast successfully hit a bomb actor: %s"), *HitBombActor->GetName());
+					return HitBombActor;
 				}
 				else
 				{
-					UE_LOG(LogTemp, Warning, TEXT("Raycast hit component but not a bomb actor"));
+					UE_LOG(LogTemp, Warning, TEXT("Raycast hit actor but not a bomb actor: %s"), *HitActor->GetName());
 				}
 			}
 			else
 			{
-				UE_LOG(LogTemp, Warning, TEXT("Raycast hit but no valid component or actor found"));
+				UE_LOG(LogTemp, Warning, TEXT("Raycast hit but no valid actor found"));
 			}
 		}
 		else
@@ -217,6 +223,8 @@ AActor* AFPSCharacter::RayCastGetActor()
 
 	return nullptr;
 }
+
+
 
 //LAB 3: Complete SetupRay()
 void AFPSCharacter::SetupRay(FVector& StartTrace, FVector& Direction, FVector& EndTrace)

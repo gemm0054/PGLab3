@@ -127,12 +127,11 @@ void AFPSBombActor::Hold(USkeletalMeshComponent* AttachTo)
 {
 	if (AttachTo)
 	{
-		// Attach the bomb to the given skeletal mesh component (e.g., the gun)
-		AttachToComponent(AttachTo, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
-        
+
 		// Optionally disable physics and collisions to avoid unintended interactions
-		SetActorEnableCollision(false);
-		SetActorTickEnabled(false); // Optionally disable ticking while held
+		BombBox->SetSimulatePhysics(false);
+		// Attach the bomb to the given skeletal mesh component (e.g., the gun)
+		AttachToComponent(AttachTo, FAttachmentTransformRules::SnapToTargetNotIncludingScale, "Muzzle");
 	}
 }
 
@@ -145,5 +144,9 @@ void AFPSBombActor::Throw(FVector Direction)
 
 	// Detach from actor and apply force
 	DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
-	BombBox->AddForce(Direction * 500.0f, NAME_None, true); // Adjust force as needed
+	FVector imp = Direction * 1000.0f;
+	BombBox->AddImpulse(imp, NAME_None, true);
+
+	FTimerHandle ExplodeTimer;
+	GetWorld()->GetTimerManager().SetTimer(ExplodeTimer, this, &AFPSBombActor::Explode, ExplodeDelay);
 }
